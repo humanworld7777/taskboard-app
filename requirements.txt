@@ -2,6 +2,7 @@ Flask
 Flask-SQLAlchemy
 Flask-SocketIO
 simple-websocket
+eventlet
 psycopg2-binary
 gunicorn
 pytest
