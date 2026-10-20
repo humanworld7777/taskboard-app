@@ -3,10 +3,8 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO, emit
 import os
 
-# 1. Initialize Flask FIRST
 app = Flask(__name__)
 
-# 2. Configure Database & Extensions
 database_url = os.environ.get("DATABASE_URL")
 if database_url and database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
@@ -15,9 +13,9 @@ app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///tasks.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-socketio = SocketIO(app, cors_allowed_origins="*")
+# Explicitly use threaded mode to avoid worker issues
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
-# 3. Database Model
 class Task(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(150), nullable=False)
@@ -26,7 +24,6 @@ class Task(db.Model):
 with app.app_context():
     db.create_all()
 
-# 4. Routes (now 'app' is fully defined!)
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -45,7 +42,6 @@ def create_task():
     socketio.emit('task_created', {"id": new_task.id, "title": new_task.title, "status": new_task.status})
     return jsonify({"id": new_task.id, "title": new_task.title, "status": new_task.status}), 201
 
-# 5. WebSocket Event
 @socketio.on('update_task')
 def handle_task_update(data):
     task_id = data.get("id")
