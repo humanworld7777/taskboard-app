@@ -53,6 +53,5 @@ def handle_task_update(data):
         emit('task_updated', {"id": task.id, "status": task.status}, broadcast=True)
 
 if __name__ == "__main__":
-    # Get the port from Render environment variables, default to 5009 locally
     port = int(os.environ.get("PORT", 5009))
-    socketio.run(app, host="0.0.0.0", port=port)
+    socketio.run(app, host="0.0.0.0", port=port, allow_unsafe_werkzeug=True)
