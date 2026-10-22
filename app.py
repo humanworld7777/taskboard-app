@@ -13,7 +13,6 @@ app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///tasks.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# Explicitly use threaded mode to avoid worker issues
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 class Task(db.Model):
@@ -54,4 +53,6 @@ def handle_task_update(data):
         emit('task_updated', {"id": task.id, "status": task.status}, broadcast=True)
 
 if __name__ == "__main__":
-    socketio.run(app, debug=True, port=5009)
+    # Get the port from Render environment variables, default to 5009 locally
+    port = int(os.environ.get("PORT", 5009))
+    socketio.run(app, host="0.0.0.0", port=port)
