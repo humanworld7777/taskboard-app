@@ -1,5 +1,230 @@
-<script>
-    // Explicitly configure Socket.IO with polling fallback for cloud proxies like Render
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Real-Time Collaborative Task Board</title>
+  <!-- Socket.IO Client Library must be loaded first -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    :root {
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-card: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-blue: #38bdf8;
+      --accent-green: #4ade80;
+      --accent-amber: #fbbf24;
+      --border-color: #475569;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    header {
+      background-color: var(--bg-secondary);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+
+    .status-badge {
+      font-size: 0.85rem;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-weight: 600;
+      background-color: #f59e0b;
+      color: #000;
+    }
+
+    .status-badge.connected {
+      background-color: var(--accent-green);
+      color: #000;
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+      padding: 2rem;
+      flex: 1;
+      overflow-x: auto;
+    }
+
+    .column {
+      background-color: var(--bg-secondary);
+      border-radius: 8px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--border-color);
+    }
+
+    .column-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid var(--border-color);
+    }
+
+    .task-list {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      min-height: 100px;
+    }
+
+    .task-card {
+      background-color: var(--bg-card);
+      padding: 1rem;
+      border-radius: 6px;
+      cursor: grab;
+      border-left: 4px solid var(--accent-blue);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    .task-card:active {
+      cursor: grabbing;
+    }
+
+    .add-task-btn {
+      margin-top: 1rem;
+      padding: 0.5rem;
+      background-color: transparent;
+      border: 2px dashed var(--border-color);
+      color: var(--text-muted);
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .add-task-btn:hover {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.7);
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal-content {
+      background: var(--bg-secondary);
+      padding: 2rem;
+      border-radius: 8px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .modal-content input {
+      width: 100%;
+      padding: 0.75rem;
+      margin: 1rem 0;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      border-radius: 4px;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
+
+    button.btn {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .btn-primary { background: var(--accent-blue); color: #000; }
+    .btn-secondary { background: var(--border-color); color: var(--text-main); }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Real-Time Task Board</h1>
+    <div id="status" class="status-badge">Connecting...</div>
+  </header>
+
+  <div class="board">
+    <!-- To Do Column -->
+    <div class="column" data-status="todo">
+      <div class="column-header">
+        <h2>To Do</h2>
+      </div>
+      <div class="task-list" id="todo-list" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+      <button class="add-task-btn" onclick="openModal('todo')">+ Add Task</button>
+    </div>
+
+    <!-- In Progress Column -->
+    <div class="column" data-status="in_progress">
+      <div class="column-header">
+        <h2>In Progress</h2>
+      </div>
+      <div class="task-list" id="in_progress-list" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+      <button class="add-task-btn" onclick="openModal('in_progress')">+ Add Task</button>
+    </div>
+
+    <!-- Done Column -->
+    <div class="column" data-status="done">
+      <div class="column-header">
+        <h2>Done</h2>
+      </div>
+      <div class="task-list" id="done-list" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+      <button class="add-task-btn" onclick="openModal('done')">+ Add Task</button>
+    </div>
+  </div>
+
+  <!-- Create Task Modal -->
+  <div id="taskModal" class="modal">
+    <div class="modal-content">
+      <h3>Create New Task</h3>
+      <input type="text" id="taskTitleInput" placeholder="Task description..." />
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitTask()">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
     const socket = io({
       transports: ['polling', 'websocket'],
       secure: true
@@ -7,7 +232,6 @@
 
     let targetStatus = 'todo';
 
-    // Socket Connection Handlers & Debugging
     socket.on('connect', () => {
       console.log('Socket connected successfully! ID:', socket.id);
       const statusBadge = document.getElementById('status');
@@ -16,20 +240,12 @@
       fetchInitialTasks();
     });
 
-    socket.on('connect_error', (err) => {
-      console.error('Socket connection error:', err);
-      const statusBadge = document.getElementById('status');
-      statusBadge.textContent = 'Connection Error';
-    });
-
-    socket.on('disconnect', (reason) => {
-      console.warn('Socket disconnected:', reason);
+    socket.on('disconnect', () => {
       const statusBadge = document.getElementById('status');
       statusBadge.textContent = 'Disconnected';
       statusBadge.classList.remove('connected');
     });
 
-    // Receive task updates in real-time from server
     socket.on('task_updated', (data) => {
       const card = document.getElementById(`task-${data.id}`);
       if (card) {
@@ -38,12 +254,10 @@
       }
     });
 
-    // Receive new tasks in real-time
     socket.on('task_created', (task) => {
       renderTaskCard(task);
     });
 
-    // Fetch initial task state on load
     async function fetchInitialTasks() {
       try {
         const response = await fetch('/api/tasks');
@@ -67,7 +281,6 @@
       if (targetList) targetList.appendChild(card);
     }
 
-    // Drag and Drop Logic
     function allowDrop(ev) {
       ev.preventDefault();
     }
@@ -87,7 +300,6 @@
       }
     }
 
-    // Modal Helpers
     function openModal(status) {
       targetStatus = status;
       document.getElementById('taskModal').style.display = 'flex';
@@ -112,3 +324,5 @@
       closeModal();
     }
   </script>
+</body>
+</html>
