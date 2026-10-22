@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Real-Time Collaborative Task Board</title>
-  <!-- Socket.IO Client Library must be loaded first -->
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <!-- Socket.IO Client Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
   <style>
     :root {
       --bg-primary: #0f172a;
@@ -225,43 +225,52 @@
   </div>
 
   <script>
-    const socket = io({
-      transports: ['polling', 'websocket'],
-      secure: true
-    });
+    // Use var to prevent temporal dead zone / reference errors
+    var targetStatus = 'todo';
+    var socket = null;
 
-    let targetStatus = 'todo';
+    if (typeof io !== 'undefined') {
+      socket = io({
+        transports: ['polling', 'websocket'],
+        secure: true
+      });
 
-    socket.on('connect', () => {
-      console.log('Socket connected successfully! ID:', socket.id);
-      const statusBadge = document.getElementById('status');
-      statusBadge.textContent = 'Live Connected';
-      statusBadge.classList.add('connected');
+      socket.on('connect', () => {
+        console.log('Socket connected successfully!');
+        var statusBadge = document.getElementById('status');
+        statusBadge.textContent = 'Live Connected';
+        statusBadge.classList.add('connected');
+        fetchInitialTasks();
+      });
+
+      socket.on('disconnect', () => {
+        var statusBadge = document.getElementById('status');
+        statusBadge.textContent = 'Disconnected';
+        statusBadge.classList.remove('connected');
+      });
+
+      socket.on('task_updated', (data) => {
+        var card = document.getElementById('task-' + data.id);
+        if (card) {
+          var targetList = document.getElementById(data.status + '-list');
+          if (targetList) targetList.appendChild(card);
+        }
+      });
+
+      socket.on('task_created', (task) => {
+        renderTaskCard(task);
+      });
+    } else {
+      console.warn('Socket.IO library not loaded. Running in offline/fallback mode.');
+      var statusBadge = document.getElementById('status');
+      statusBadge.textContent = 'Offline Mode';
       fetchInitialTasks();
-    });
-
-    socket.on('disconnect', () => {
-      const statusBadge = document.getElementById('status');
-      statusBadge.textContent = 'Disconnected';
-      statusBadge.classList.remove('connected');
-    });
-
-    socket.on('task_updated', (data) => {
-      const card = document.getElementById(`task-${data.id}`);
-      if (card) {
-        const targetList = document.getElementById(`${data.status}-list`);
-        if (targetList) targetList.appendChild(card);
-      }
-    });
-
-    socket.on('task_created', (task) => {
-      renderTaskCard(task);
-    });
+    }
 
     async function fetchInitialTasks() {
       try {
-        const response = await fetch('/api/tasks');
-        const tasks = await response.json();
+        var response = await fetch('/api/tasks');
+        var tasks = await response.json();
         document.querySelectorAll('.task-list').forEach(el => el.innerHTML = '');
         tasks.forEach(task => renderTaskCard(task));
       } catch (err) {
@@ -270,14 +279,14 @@
     }
 
     function renderTaskCard(task) {
-      const card = document.createElement('div');
+      var card = document.createElement('div');
       card.className = 'task-card';
-      card.id = `task-${task.id}`;
+      card.id = 'task-' + task.id;
       card.draggable = true;
       card.textContent = task.title;
       card.ondragstart = (e) => e.dataTransfer.setData('text/plain', task.id);
 
-      const targetList = document.getElementById(`${task.status}-list`);
+      var targetList = document.getElementById(task.status + '-list');
       if (targetList) targetList.appendChild(card);
     }
 
@@ -287,16 +296,18 @@
 
     function drop(ev) {
       ev.preventDefault();
-      const taskId = ev.dataTransfer.getData('text/plain');
-      let targetElement = ev.target;
+      var taskId = ev.dataTransfer.getData('text/plain');
+      var targetElement = ev.target;
       
       while (targetElement && !targetElement.classList.contains('column')) {
         targetElement = targetElement.parentElement;
       }
 
       if (targetElement) {
-        const newStatus = targetElement.getAttribute('data-status');
-        socket.emit('update_task', { id: parseInt(taskId), status: newStatus });
+        var newStatus = targetElement.getAttribute('data-status');
+        if (socket) {
+          socket.emit('update_task', { id: parseInt(taskId), status: newStatus });
+        }
       }
     }
 
@@ -312,14 +323,16 @@
     }
 
     async function submitTask() {
-      const title = document.getElementById('taskTitleInput').value.trim();
+      var title = document.getElementById('taskTitleInput').value.trim();
       if (!title) return;
 
-      await fetch('/api/tasks', {
+      var response = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, status: targetStatus })
+        body: JSON.stringify({ title: title, status: targetStatus })
       });
+      var newTask = await response.json();
+      renderTaskCard(newTask);
 
       closeModal();
     }
